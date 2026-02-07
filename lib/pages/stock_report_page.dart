@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/item_model.dart';
 import '../services/api_service.dart';
+import '../models/item_model.dart';
 
 class StockReportPage extends StatefulWidget {
   const StockReportPage({super.key});
@@ -10,132 +10,220 @@ class StockReportPage extends StatefulWidget {
 }
 
 class _StockReportPageState extends State<StockReportPage> {
-  // Key ini digunakan untuk memaksa FutureBuilder memuat ulang data
-  Key _refreshKey = UniqueKey();
+  List<ItemStock> _allStocks = []; // Data asli dari API
+  List<ItemStock> _filteredStocks = []; // Data yang ditampilkan setelah filter
+  List<dynamic> _gudangs = [];
+  
+  bool _isLoading = true;
 
-  // Fungsi untuk memicu refresh dari dalam widget ini
-  Future<void> _handleRefresh() async {
-    setState(() {
-      _refreshKey = UniqueKey();
-    });
+  // Variabel Filter
+  String _searchName = "";
+  int? _selectedGudangId;
+  double _minQty = 0;
+  double _maxQty = 1000; // Default max tinggi
+  String? _selectedType; // null berarti "Semua", atau isi dengan "Produk"/"Bahan"
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
   }
+
+  void _loadData() async {
+    try {
+      final stocks = await ApiService().getStockReport();
+      final gudangs = await ApiService().getGudangs();
+      setState(() {
+        _allStocks = stocks;
+        _filteredStocks = stocks;
+        _gudangs = gudangs;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // LOGIKA FILTER
+ void _runFilter() {
+  List<ItemStock> results = [];
+  
+  results = _allStocks.where((item) {
+    // 1. Filter Nama/Produk
+    final matchName = item.itemName.toLowerCase().contains(_searchName.toLowerCase());
+    
+    // 2. Filter Tipe (Produk vs Bahan)
+    // Misal Anda punya variabel String? _selectedType ('Produk' atau 'Bahan')
+    final matchType = _selectedType == null || item.itemType == _selectedType;
+    
+    // 3. Filter Gudang
+    final matchGudang = _selectedGudangId == null || item.gudangId == _selectedGudangId;
+    
+    // 4. Filter Range Qty
+    final matchQty = item.currentStock >= _minQty && item.currentStock <= _maxQty;
+
+    return matchName && matchType && matchGudang && matchQty;
+  }).toList();
+
+  setState(() {
+    _filteredStocks = results;
+  });
+}
 
   @override
   Widget build(BuildContext context) {
-    // Kita hilangkan Scaffold karena sudah ada di MainNavigationPage
-    return RefreshIndicator(
-      onRefresh: _handleRefresh,
-      child: FutureBuilder<List<ItemStock>>(
-        // Key diletakkan di sini. Jika Key berubah, FutureBuilder akan reset
-        key: _refreshKey,
-        future: ApiService().getStockReport(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 40),
-                  const SizedBox(height: 10),
-                  Text('Gagal memuat data: ${snapshot.error}'),
-                  TextButton(
-                    onPressed: _handleRefresh,
-                    child: const Text("Coba Lagi"),
-                  )
-                ],
-              ),
-            );
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return ListView( // Gunakan ListView agar RefreshIndicator tetap bekerja saat kosong
-              children: [
-                SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-                const Center(child: Text('Stok kosong melompong')),
-              ],
-            );
-          }
-
-          return ListView.builder(
-            // Penting: tambahkan physics agar selalu bisa di-scroll untuk refresh
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, index) {
-              var item = snapshot.data![index];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-                  title: Row(
-                    children: [
-                      Text(
-                        item.itemName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      _buildTypeBadge(item.itemType),
-                    ],
+    return Scaffold(
+      body: Column(
+        children: [
+          _buildFilterPanel(), // Panel Filter di atas
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: () async => _loadData(),
+                    child: _buildList(),
                   ),
-                  subtitle: Text("Kode: ${item.itemCode}"),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        "${item.currentStock}",
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: _getStockColor(item.currentStock),
-                        ),
-                      ),
-                      Text(
-                        item.unit,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+          ),
+        ],
       ),
     );
   }
 
-  // Helper untuk warna stok
-  Color _getStockColor(int stock) {
-    if (stock <= 0) return Colors.red;
-    if (stock < 5) return Colors.orange;
-    return Colors.green;
-  }
+Widget _buildFilterPanel() {
+  return Card(
+    margin: const EdgeInsets.all(10),
+    elevation: 2,
+    child: ExpansionTile(
+      leading: const Icon(Icons.filter_alt, color: Colors.blue),
+      title: const Text("Filter Stok"),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          child: Column(
+            children: [
+              // Search Nama
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: "Nama Barang",
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (val) {
+                  _searchName = val;
+                  _runFilter();
+                },
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  // Dropdown Kategori (Produk/Bahan)
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      decoration: const InputDecoration(labelText: "Tipe"),
+                      items: const [
+                        DropdownMenuItem(value: null, child: Text("Semua")),
+                        DropdownMenuItem(value: "Produk", child: Text("Produk")),
+                        DropdownMenuItem(value: "Bahan", child: Text("Bahan")),
+                      ],
+                      onChanged: (val) {
+                        setState(() => _selectedType = val);
+                        _runFilter();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Dropdown Gudang
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      value: _selectedGudangId,
+                      decoration: const InputDecoration(labelText: "Gudang"),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text("Semua")),
+                        ..._gudangs.map((g) => DropdownMenuItem(value: g['id'], child: Text(g['nama_gudang']))),
+                      ],
+                      onChanged: (val) {
+                        setState(() => _selectedGudangId = val);
+                        _runFilter();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // Filter Range Qty
+              Text("Rentang Qty: ${_minQty.toInt()} - ${_maxQty.toInt()}"),
+              RangeSlider(
+                values: RangeValues(_minQty, _maxQty),
+                min: 0,
+                max: 1000,
+                divisions: 20,
+                onChanged: (values) {
+                  setState(() {
+                    _minQty = values.start;
+                    _maxQty = values.end;
+                  });
+                  _runFilter();
+                },
+              ),
+              _buildResetButton(), // Tombol Reset muncul di sini
+            ],
+          ),
+        )
+      ],
+    ),
+  );
+}
+Widget _buildResetButton() {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8.0),
+    child: TextButton.icon(
+      onPressed: () {
+        setState(() {
+          // Kembalikan semua ke default
+          _searchName = "";
+          _selectedGudangId = null;
+          _selectedType = null;
+          _minQty = 0.0;
+          _maxQty = 1000.0;
+          _filteredStocks = _allStocks; // Tampilkan semua lagi
+        });
+      },
+      icon: const Icon(Icons.refresh, color: Colors.orange),
+      label: const Text("Reset Filter", style: TextStyle(color: Colors.orange)),
+    ),
+  );
+}
 
-  // Helper untuk badge tipe (Bahan/Produk)
-  Widget _buildTypeBadge(String type) {
-    bool isProduct = type.toLowerCase() == 'produk';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: isProduct ? Colors.purple.shade50 : Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: isProduct ? Colors.purple.shade200 : Colors.blue.shade200,
-        ),
-      ),
-      child: Text(
-        type,
-        style: TextStyle(
-          fontSize: 10,
-          color: isProduct ? Colors.purple.shade900 : Colors.blue.shade900,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+  Widget _buildList() {
+    if (_filteredStocks.isEmpty) {
+      return const Center(child: Text("Data tidak ditemukan"));
+    }
+    return ListView.builder(
+      itemCount: _filteredStocks.length,
+      itemBuilder: (context, index) {
+        final item = _filteredStocks[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: ListTile(
+            title: Text(item.itemName, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text("Gudang: ${item.gudangName ?? 'Default'}"),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "${item.currentStock}",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: item.currentStock <= 5 ? Colors.red : Colors.blue,
+                  ),
+                ),
+                const Text("Unit", style: TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

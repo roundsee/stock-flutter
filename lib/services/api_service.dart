@@ -9,6 +9,17 @@ class ApiService {
 
   //final String baseUrl = "http://IP_LAPTOP_KAMU:8000/api";
  // final String token = "PASTE_TOKEN_DARI_VSCODE_KAMU_DI_SINI";
+Future<bool> checkConnection() async {
+  try {
+    // Kita coba panggil endpoint paling ringan, misal base URL saja
+    final response = await http.get(Uri.parse('$baseUrl/'))
+        .timeout(const Duration(seconds: 3)); // Maksimal tunggu 3 detik
+    
+    return response.statusCode != 0; // Jika ada respon apapun, berarti ON
+  } catch (_) {
+    return false; // Jika error/timeout, berarti OFF
+  }
+}
 
 Future<String?> login(String email, String password) async {
     try {
@@ -29,6 +40,45 @@ Future<String?> login(String email, String password) async {
       return null;
     }
   }
+
+  Future<List<dynamic>> getHistory(String type) async {
+  final prefs = await SharedPreferences.getInstance();
+  String? token = prefs.getString('auth_token');
+  
+  // type bisa 'penerimaan' atau 'pengeluaran'
+  final response = await http.get(
+    Uri.parse('$baseUrl/$type'), 
+    headers: {
+      'Authorization': 'Bearer $token',
+      'Accept': 'application/json'
+    },
+  );
+
+  if (response.statusCode == 200) {
+    // Karena Laravel biasanya return { "data": [...] } atau langsung [...]
+    final data = jsonDecode(response.body);
+    return data is Map ? data['data'] : data;
+  }
+  return [];
+}
+
+
+Future<List<dynamic>> getStockLogs() async {
+  final prefs = await SharedPreferences.getInstance();
+  final response = await http.get(
+    Uri.parse('$baseUrl/stock-logs'), // Pastikan route ini ada di api.php
+    headers: {
+      'Authorization': 'Bearer ${prefs.getString('auth_token')}',
+      'Accept': 'application/json'
+    },
+  );
+
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+    return data['data'];
+  }
+  return [];
+}
 
   // Di dalam class ApiService
 
@@ -179,7 +229,29 @@ Future<Map<String, dynamic>> storePenerimaan({
     return {"success": false, "message": "Gagal terhubung ke server. Cek koneksi Anda."};
   }
 }
-
+Future<bool> storePenerimaanMulti({
+  required int gudangId,
+  required String supplier,
+  required String keterangan,
+  required List<Map<String, dynamic>> items,
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final response = await http.post(
+    Uri.parse('$baseUrl/penerimaan'),
+    headers: {
+      'Authorization': 'Bearer ${prefs.getString('auth_token')}',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: jsonEncode({
+      "gudang_id": gudangId,
+      "supplier": supplier,
+      "keterangan": keterangan,
+      "items": items, // Ini akan mengirim [{item_id: 1, qty: 10}, {item_id: 2, qty: 5}]
+    }),
+  );
+  return response.statusCode == 201;
+}
 Future<bool> storePengeluaran({
   required int itemId,
   required int gudangId,
@@ -208,6 +280,37 @@ Future<bool> storePengeluaran({
     return response.statusCode == 200 || response.statusCode == 201;
   } catch (e) {
     return false;
+  }
+}
+Future<Map<String, dynamic>> storePengeluaranMulti({
+  required int gudangId,
+  required String keterangan,
+  required List<Map<String, dynamic>> items,
+}) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final response = await http.post(
+      Uri.parse('$baseUrl/pengeluaran'), // Endpoint pengeluaran Anda
+      headers: {
+        'Authorization': 'Bearer ${prefs.getString('auth_token')}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode({
+        "gudang_id": gudangId,
+        "keterangan": keterangan,
+        "items": items,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return {"success": true, "message": "Berhasil"};
+    } else {
+      return {"success": false, "message": data['message'] ?? "Gagal menyimpan"};
+    }
+  } catch (e) {
+    return {"success": false, "message": "Error koneksi: $e"};
   }
 }
 }

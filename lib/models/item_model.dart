@@ -1,34 +1,29 @@
 class ItemStock {
   final int id;
-  final String itemCode;
   final String itemName;
   final String itemType;
-  final String unit;
   final int currentStock;
-
+  final int? gudangId;      // Tambahkan ini
+  final String? gudangName;  // Tambahkan ini
 
   ItemStock({
     required this.id,
-    required this.itemCode,
     required this.itemName,
     required this.itemType,
-    required this.unit,
     required this.currentStock,
-  
+    this.gudangId,          // Masukkan ke constructor
+    this.gudangName,
   });
 
-  // Fungsi untuk konversi dari JSON Laravel ke Object Dart
-factory ItemStock.fromJson(Map<String, dynamic> json) {
-  return ItemStock(
-    id: json['id'] ?? 0,
-    itemCode: json['item_code'] ?? '-',
-    itemName: json['item_name'] ?? 'Tanpa Nama',
-    // Gunakan operator ?? untuk memberikan nilai default jika null
-    itemType: json['item_type'] ?? 'Bahan', 
-    unit: json['unit'] ?? 'pcs',
-    currentStock: json['current_stock'] != null 
-        ? int.parse(json['current_stock'].toString()) 
-        : 0,
-  );
-}
+  factory ItemStock.fromJson(Map<String, dynamic> json) {
+    return ItemStock(
+      id: json['id'],
+      itemName: json['item_name'],
+      itemType: json['item_type'] ?? 'Produk', // Default Produk
+      // Laravel mungkin mengirim qty sebagai string atau int, kita amankan ke int
+      currentStock: int.parse(json['current_stock'].toString()),
+      gudangId: json['gudang_id'],    // Pastikan key-nya sesuai dengan JSON API
+      gudangName: json['gudang_name'], // Ambil nama gudang jika ada di JSON
+    );
+  }
 }

@@ -4,6 +4,8 @@ import 'penerimaan_page.dart';
 import 'pengeluaran_page.dart';
 import 'add_item_page.dart';
 import 'setting_page.dart';
+import 'history_page.dart'; // Import halaman history yang kita buat tadi
+import '../services/api_service.dart'; // Import ApiService
 
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
@@ -14,14 +16,27 @@ class MainNavigationPage extends StatefulWidget {
 
 class _MainNavigationPageState extends State<MainNavigationPage> {
   int _currentIndex = 0;
+  bool _isServerOn = true; // Variabel status server
 
-  // Fungsi untuk mendapatkan daftar halaman
-  // Kita jadikan method agar widget StockReportPage dibuat ulang saat setState dipanggil
+  @override
+  void initState() {
+    super.initState();
+    _checkApiStatus(); // Cek status saat aplikasi dibuka
+  }
+
+  // Fungsi cek koneksi ke Laravel
+  void _checkApiStatus() async {
+    bool status = await ApiService().checkConnection();
+    if (mounted) {
+      setState(() => _isServerOn = status);
+    }
+  }
+
   List<Widget> _getPages() {
     return [
-      const StockReportPage(),                        // Index 0
-      const Center(child: Text("History Transaksi")), // Index 1
-      const SettingsPage(),                           // Index 2
+      const StockReportPage(),
+      const HistoryPage(), // Pasang HistoryPage di sini
+      const SettingsPage(),
     ];
   }
 
@@ -35,19 +50,37 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         ),
         backgroundColor: Colors.blue,
         centerTitle: true,
+        // --- TAMBAHKAN INDIKATOR DI SINI ---
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: Tooltip(
+              message: _isServerOn ? "Server Online" : "Server Offline",
+              child: Icon(
+                Icons.circle,
+                size: 14,
+                color: _isServerOn ? Colors.greenAccent : Colors.redAccent,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () {
+              _checkApiStatus();
+              setState(() {}); // Refresh halaman aktif
+            },
+          )
+        ],
       ),
-      // Kita panggil method _getPages() di sini
       body: IndexedStack(
         index: _currentIndex,
         children: _getPages(),
       ),
-      
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.blue,
         onPressed: () => _showActionSheet(context),
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
@@ -60,6 +93,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     );
   }
 
+  // ... (Method _showActionSheet tetap sama seperti kode Anda)
   void _showActionSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -81,52 +115,63 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              
-              // MENU TAMBAH MATERIAL
               ListTile(
                 leading: const Icon(Icons.category, color: Colors.orange),
                 title: const Text("Tambah Material Baru"),
                 onTap: () async {
-                  Navigator.pop(context); // Tutup BottomSheet
+                  Navigator.pop(context);
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AddItemPage()),
                   );
-                  if (result == true) setState(() {}); // Refresh jika sukses
+                  if (result == true) setState(() {});
                 },
               ),
-
-              // MENU PENERIMAAN
               ListTile(
                 leading: const Icon(Icons.download, color: Colors.green),
                 title: const Text("Penerimaan Barang (Masuk)"),
                 onTap: () async {
-                  Navigator.pop(context); // Tutup BottomSheet
+                  Navigator.pop(context);
+                  if (!_isServerOn) {
+                    _showOfflineSnippet();
+                    return;
+                  }
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const PenerimaanPage()),
                   );
-                  if (result == true) setState(() {}); // Refresh jika sukses
+                  if (result == true) setState(() {});
                 },
               ),
-
-              // MENU PENGELUARAN
               ListTile(
                 leading: const Icon(Icons.upload, color: Colors.red),
                 title: const Text("Pengeluaran Barang (Keluar)"),
                 onTap: () async {
-                  Navigator.pop(context); // Tutup BottomSheet
+                  Navigator.pop(context);
+                  if (!_isServerOn) {
+                    _showOfflineSnippet();
+                    return;
+                  }
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const PengeluaranPage()),
                   );
-                  if (result == true) setState(() {}); // Refresh jika sukses
+                  if (result == true) setState(() {});
                 },
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  void _showOfflineSnippet() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Tidak dapat transaksi. Server sedang Offline!"),
+        backgroundColor: Colors.red,
+      ),
     );
   }
 }

@@ -10,13 +10,18 @@ class PenerimaanPage extends StatefulWidget {
 }
 
 class _PenerimaanPageState extends State<PenerimaanPage> {
-  final _formKey = GlobalKey<FormState>();
   final _qtyController = TextEditingController();
+  final _supplierController = TextEditingController();
+  final _noteController = TextEditingController();
   
-  List<ItemStock> _items = [];
+  List<ItemStock> _itemsMaster = []; // Data barang dari API
   List<dynamic> _gudangs = [];
   
+  // "Keranjang" sementara untuk menampung banyak barang
+  List<Map<String, dynamic>> _selectedItems = []; 
+  
   int? _selectedItemId;
+  String? _selectedItemName;
   int? _selectedGudangId;
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -29,124 +34,155 @@ class _PenerimaanPageState extends State<PenerimaanPage> {
 
   void _loadInitialData() async {
     try {
-      // Ambil data barang (menggunakan fungsi yang sudah Anda buat sebelumnya)
       final items = await ApiService().getStockReport();
-      // Ambil data gudang
       final gudangs = await ApiService().getGudangs();
-
       setState(() {
-        _items = items;
+        _itemsMaster = items;
         _gudangs = gudangs;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error memuat data: $e")),
-      );
     }
+  }
+
+  // Fungsi untuk menambah barang ke daftar sementara
+  void _addItemToList() {
+    if (_selectedItemId == null || _qtyController.text.isEmpty) return;
+
+    setState(() {
+      _selectedItems.add({
+        "item_id": _selectedItemId,
+        "item_name": _selectedItemName,
+        "qty": int.parse(_qtyController.text),
+      });
+      // Reset input barang setelah ditambah
+      _qtyController.clear();
+      _selectedItemId = null;
+    });
   }
 
   void _submit() async {
-  if (!_formKey.currentState!.validate() || _selectedItemId == null || _selectedGudangId == null) {
-    return;
-  }
+    if (_selectedItems.isEmpty || _selectedGudangId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Daftar barang masih kosong!")));
+      return;
+    }
 
-  setState(() => _isSubmitting = true);
+    setState(() => _isSubmitting = true);
 
-  // Ambil Map hasil dari API
-  final result = await ApiService().storePenerimaan(
-    itemId: _selectedItemId!,
-    gudangId: _selectedGudangId!,
-    jumlah: int.parse(_qtyController.text),
-  );
+    // Kirim data sesuai format Header-Detail Laravel
+    bool success = await ApiService().storePenerimaanMulti(
+      gudangId: _selectedGudangId!,
+      supplier: _supplierController.text,
+      keterangan: _noteController.text,
+      items: _selectedItems, // Mengirim array items
+    );
 
-  setState(() => _isSubmitting = false);
+    setState(() => _isSubmitting = false);
 
-  if (result['success'] == true) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Penerimaan Berhasil!"), backgroundColor: Colors.green),
-      );
+    if (success) {
       Navigator.pop(context, true);
     }
-  } else {
-    // Tampilkan pesan error ASLI dari Laravel
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("Gagal Simpan"),
-          content: Text(result['message']), // PESAN ERROR DI SINI
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK"),
-            )
-          ],
-        ),
-      );
-    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Input Penerimaan")),
+      appBar: AppBar(title: const Text("Penerimaan Multi-Item"), backgroundColor: Colors.green),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                children: [
-                  // Dropdown Pilih Barang
-                  DropdownButtonFormField<int>(
-                    decoration: const InputDecoration(labelText: "Pilih Barang", border: OutlineInputBorder()),
-                    items: _items.map((item) {
-                      return DropdownMenuItem(value: item.id, child: Text(item.itemName));
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedItemId = val),
-                  ),
-                  const SizedBox(height: 15),
+            child: Column(
+              children: [
+                // BAGIAN HEADER
+                TextField(controller: _supplierController, decoration: const InputDecoration(labelText: "Supplier")),
+                DropdownButtonFormField<int>(
+                  decoration: const InputDecoration(labelText: "Pilih Gudang"),
+                  items: _gudangs.map((g) => DropdownMenuItem<int>(value: g['id'], child: Text(g['nama_gudang']))).toList(),
+                  onChanged: (val) => setState(() => _selectedGudangId = val),
+                ),
+                const Divider(height: 30),
 
-                  // Dropdown Pilih Gudang
-                  DropdownButtonFormField<int>(
-  decoration: const InputDecoration(labelText: "Pilih Gudang", border: OutlineInputBorder()),
-  value: _selectedGudangId,
-  items: _gudangs.map<DropdownMenuItem<int>>((dynamic gudang) { // Tambahkan <DropdownMenuItem<int>>
-    return DropdownMenuItem<int>(
-      value: int.parse(gudang['id'].toString()), // Paksa jadi int
-      child: Text(gudang['nama_gudang']),
-    );
-  }).toList(),
-  onChanged: (val) => setState(() => _selectedGudangId = val),
-),
-                  const SizedBox(height: 15),
-
-                  // Input Jumlah
-                  TextFormField(
-                    controller: _qtyController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "Jumlah Masuk", border: OutlineInputBorder()),
-                    validator: (v) => v!.isEmpty ? 'Jumlah wajib diisi' : null,
-                  ),
-                  const SizedBox(height: 30),
-
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                      onPressed: _isSubmitting ? null : _submit,
-                      child: _isSubmitting 
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text("SIMPAN PENERIMAAN"),
+                // BAGIAN INPUT BARANG (ITEM)
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButton<int>(
+                        isExpanded: true,
+                        hint: const Text("Pilih Barang"),
+                        value: _selectedItemId,
+                        items: _itemsMaster.map((item) => DropdownMenuItem(
+                          value: item.id, 
+                          child: Text(item.itemName)
+                        )).toList(),
+                        onChanged: (val) {
+                          final item = _itemsMaster.firstWhere((e) => e.id == val);
+                          setState(() {
+                            _selectedItemId = val;
+                            _selectedItemName = item.itemName;
+                          });
+                        },
+                      ),
                     ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _qtyController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(hintText: "Qty"),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_box, color: Colors.blue, size: 35),
+                      onPressed: _addItemToList,
+                    )
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+                const Text("Daftar Barang yang Akan Masuk:", style: TextStyle(fontWeight: FontWeight.bold)),
+                
+                // DAFTAR BARANG (DETAIL)
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _selectedItems.length,
+    itemBuilder: (context, index) { // <--- Pastikan itemBuilder ada di sini
+      final item = _selectedItems[index];
+      return Card(
+        elevation: 2,
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.blue.shade100,
+            child: Text("${index + 1}", style: const TextStyle(fontSize: 12)),
+          ),
+          title: Text(item['item_name']),
+          subtitle: Text("Jumlah: ${item['qty']} Unit"),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: () {
+              setState(() {
+                _selectedItems.removeAt(index);
+              });
+            },
+          ),
+        ),
+      );
+    }, // <
                   ),
-                ],
-              ),
+                ),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                    onPressed: _isSubmitting ? null : _submit,
+                    child: const Text("SIMPAN TRANSAKSI"),
+                  ),
+                )
+              ],
             ),
           ),
     );
