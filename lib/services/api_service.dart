@@ -5,7 +5,7 @@ import '../models/item_model.dart';
 
 class ApiService {
   // Gunakan 10.0.2.2 untuk emulator Android, atau IP asli laptop untuk HP fisik
-  final String baseUrl = "http://10.0.2.2:8000/api";
+  final String baseUrl = "https://stock.asta-tbk.com/api";
 
   //final String baseUrl = "http://IP_LAPTOP_KAMU:8000/api";
  // final String token = "PASTE_TOKEN_DARI_VSCODE_KAMU_DI_SINI";
@@ -23,20 +23,33 @@ Future<bool> checkConnection() async {
 
 Future<String?> login(String email, String password) async {
     try {
+      final payload = jsonEncode({
+  'email':email.trim(),
+  'password': password,
+});
+
+print("Payload yang dikirim: $payload");
+
       final response = await http.post(
         Uri.parse('$baseUrl/login'),
         headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}),
       );
+       // Cek di Debug Console VS Code
+      print("Status Code: ${response.statusCode}");
+    print("Response Body: ${response.body}"); // Cek di Debug Console VS Code
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('auth_token', data['access_token']);
         return data['access_token']; // Mengembalikan token jika sukses
       } else {
-        return null; // Login gagal
+         // Tambahkan ini agar error muncul di console
+      return null;
+       
       }
     } catch (e) {
+      print("KONEKSI ERROR: $e");
       return null;
     }
   }
