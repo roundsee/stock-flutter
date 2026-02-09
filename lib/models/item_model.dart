@@ -2,6 +2,8 @@ class ItemStock {
   final int id;
   final String itemName;
   final String itemType;
+  final String itemCode;
+  final String unit;
   final int currentStock;
   final int? gudangId;      // Tambahkan ini
   final String? gudangName;  // Tambahkan ini
@@ -10,6 +12,8 @@ class ItemStock {
     required this.id,
     required this.itemName,
     required this.itemType,
+    required this.itemCode,
+    required this.unit,
     required this.currentStock,
     this.gudangId,          // Masukkan ke constructor
     this.gudangName,
@@ -20,6 +24,8 @@ class ItemStock {
       id: json['id'],
       itemName: json['item_name'],
       itemType: json['item_type'] ?? 'Produk', // Default Produk
+      itemCode: json['item_code'],
+      unit: json['unit'],
       // Laravel mungkin mengirim qty sebagai string atau int, kita amankan ke int
       currentStock: int.parse(json['current_stock'].toString()),
       gudangId: json['gudang_id'],    // Pastikan key-nya sesuai dengan JSON API

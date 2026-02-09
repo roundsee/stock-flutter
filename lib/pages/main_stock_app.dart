@@ -35,7 +35,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   List<Widget> _getPages() {
     return [
       const StockReportPage(),
-      const HistoryPage(), // Pasang HistoryPage di sini
+      const StockHistoryPage(), // Pasang HistoryPage di sini
       const SettingsPage(),
     ];
   }

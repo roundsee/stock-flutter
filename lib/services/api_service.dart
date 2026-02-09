@@ -77,20 +77,27 @@ print("Payload yang dikirim: $payload");
 
 
 Future<List<dynamic>> getStockLogs() async {
-  final prefs = await SharedPreferences.getInstance();
-  final response = await http.get(
-    Uri.parse('$baseUrl/stock-logs'), // Pastikan route ini ada di api.php
-    headers: {
-      'Authorization': 'Bearer ${prefs.getString('auth_token')}',
-      'Accept': 'application/json'
-    },
-  );
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
 
-  if (response.statusCode == 200) {
-    final data = jsonDecode(response.body);
-    return data['data'];
+    final response = await http.get(
+      Uri.parse('$baseUrl/stock-logs'), // Sesuai route baru kamu
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      return body['data']; // Mengambil list dari key "data"
+    }
+    return [];
+  } catch (e) {
+    print("Error Logs: $e");
+    return [];
   }
-  return [];
 }
 
   // Di dalam class ApiService
@@ -326,4 +333,6 @@ Future<Map<String, dynamic>> storePengeluaranMulti({
     return {"success": false, "message": "Error koneksi: $e"};
   }
 }
+
+
 }

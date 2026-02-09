@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/item_model.dart';
+import 'dart:io';
+import 'package:excel/excel.dart';
+import 'package:path_provider/path_provider.dart';
+
 
 class StockReportPage extends StatefulWidget {
   const StockReportPage({super.key});
@@ -32,6 +36,10 @@ class _StockReportPageState extends State<StockReportPage> {
   void _loadData() async {
     try {
       final stocks = await ApiService().getStockReport();
+      if (stocks.isNotEmpty) {
+    // Intip isi tipe barang dari database kamu di console
+    print("Tipe Barang dari DB: '${stocks[0].itemType}'"); 
+  }
       final gudangs = await ApiService().getGudangs();
       setState(() {
         _allStocks = stocks;
@@ -40,7 +48,11 @@ class _StockReportPageState extends State<StockReportPage> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      print("ERROR LOAD DATA: $e"); // Ini akan muncul di console VS Code
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Gagal memuat data: $e")),
+    );
     }
   }
 
@@ -54,7 +66,7 @@ class _StockReportPageState extends State<StockReportPage> {
     
     // 2. Filter Tipe (Produk vs Bahan)
     // Misal Anda punya variabel String? _selectedType ('Produk' atau 'Bahan')
-    final matchType = _selectedType == null || item.itemType == _selectedType;
+    final matchType = _selectedType == null ||item.itemType.toLowerCase() == _selectedType!.toLowerCase();;
     
     // 3. Filter Gudang
     final matchGudang = _selectedGudangId == null || item.gudangId == _selectedGudangId;
@@ -64,7 +76,10 @@ class _StockReportPageState extends State<StockReportPage> {
 
     return matchName && matchType && matchGudang && matchQty;
   }).toList();
-
+print("Filter Aktif: $_selectedType");
+  if (_allStocks.isNotEmpty) {
+     print("Contoh tipe dari API: '${_allStocks[0].itemType}'");
+  }
   setState(() {
     _filteredStocks = results;
   });
@@ -73,6 +88,12 @@ class _StockReportPageState extends State<StockReportPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+      onPressed: _exportToExcel,
+      label: const Text("Export Excel"),
+      icon: const Icon(Icons.description),
+      backgroundColor: Colors.green[700],
+    ),
       body: Column(
         children: [
           _buildFilterPanel(), // Panel Filter di atas
@@ -226,4 +247,69 @@ Widget _buildResetButton() {
       },
     );
   }
+
+Future<void> _exportToExcel() async {
+  if (_filteredStocks.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Tidak ada data untuk diekspor")),
+    );
+    return;
+  }
+
+  // Tampilkan loading sebentar
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => const Center(child: CircularProgressIndicator()),
+  );
+
+  try {
+    var excel = Excel.createExcel();
+    Sheet sheetObject = excel['Stock Report'];
+
+    // 1. Header dengan format CellValue terbaru
+    sheetObject.appendRow([
+      TextCellValue("Kode Barang"),
+      TextCellValue("Nama Barang"),
+      TextCellValue("Tipe"),
+      TextCellValue("Gudang"),
+      TextCellValue("Stok Saat Ini"),
+      TextCellValue("Satuan"),
+    ]);
+
+    // 2. Isi Data dari _filteredStocks
+    for (var item in _filteredStocks) {
+      sheetObject.appendRow([
+        TextCellValue(item.itemCode ?? "-"),
+        TextCellValue(item.itemName),
+        TextCellValue(item.itemType),
+        TextCellValue(item.gudangName ?? "Default"),
+        DoubleCellValue(item.currentStock.toDouble()), // Gunakan Double untuk angka
+        TextCellValue(item.unit ?? ""),
+      ]);
+    }
+
+    // 3. Simpan File
+    final directory = await getApplicationDocumentsDirectory();
+    final String filePath = "${directory.path}/Stock_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+    
+    final fileBytes = excel.save();
+    if (fileBytes != null) {
+      File(filePath)
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(fileBytes);
+      
+      // Tutup loading
+      Navigator.pop(context);
+
+      // 4. Buka File
+      
+    }
+  } catch (e) {
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Gagal ekspor: $e")),
+    );
+  }
+}  
 }
